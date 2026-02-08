@@ -58,3 +58,4 @@ python scripts/snow_flight_report.py
 ## Notes
 - Google Flights is not easily automated; this uses the Amadeus API for real‑time flight offers.
 - Airport lists and coordinates are in `scripts/snow_flight_report.py`.
+SSH works 🎯
