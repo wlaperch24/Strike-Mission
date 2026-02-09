@@ -1,0 +1,34 @@
+name: Weekly snowfall email
+
+on:
+  schedule:
+    - cron: "0 22 * * 1"
+  workflow_dispatch:
+
+jobs:
+  send-email:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send snowfall email
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+          SNOWFALL_DAYS: ${{ secrets.SNOWFALL_DAYS }}
+          SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN }}
+          LOCAL_TIMEZONE: ${{ secrets.LOCAL_TIMEZONE }}
+        run: python scripts/snow_report.py
