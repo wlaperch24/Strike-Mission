@@ -310,12 +310,14 @@ def main() -> None:
             report_lines.append("")
 subject = "Snowfall & Flight Monitor"
 
+body = "\n".join(report_lines)
+
 dry_run = os.getenv("DRY_RUN", "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 if dry_run:
     print("DRY_RUN is enabled — not sending email. Printing report instead:\n")
-    print("\n".join(report_lines))
+    print(body)
 else:
-    send_email(subject, "\n".join(report_lines))
+    send_email(subject, body)
     print("Email sent.")
 
