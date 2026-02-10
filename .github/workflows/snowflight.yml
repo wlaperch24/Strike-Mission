@@ -1,0 +1,39 @@
+
+name: Snow & Flight Monitor
+
+on:
+  schedule:
+    - cron: "0 20-23 * * 1"
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run report
+        env:
+          OPENSNOW_API_KEY: ${{ secrets.OPENSNOW_API_KEY }}
+          AMADEUS_CLIENT_ID: ${{ secrets.AMADEUS_CLIENT_ID }}
+          AMADEUS_CLIENT_SECRET: ${{ secrets.AMADEUS_CLIENT_SECRET }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+          SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN }}
+          RETURN_DAY_OFFSET: ${{ secrets.RETURN_DAY_OFFSET }}
+          NYC_AIRPORTS: ${{ secrets.NYC_AIRPORTS }}
+        run: python scripts/snow_flight_report.py
+
