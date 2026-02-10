@@ -31,4 +31,4 @@ jobs:
           SNOWFALL_DAYS: ${{ secrets.SNOWFALL_DAYS }}
           SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN }}
           LOCAL_TIMEZONE: ${{ secrets.LOCAL_TIMEZONE }}
-        run: python scripts/snow_report.py
+        run: python scripts/snow_flight_report.py
