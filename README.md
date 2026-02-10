@@ -1,61 +1,91 @@
-# Strike Mission – Snow & Flight Monitor
 
-This repo contains a scheduled job that:
+# Strike Mission — Snow & Flight Monitor
 
-1. Checks the 7‑day snowfall forecast (starting the Monday run time) for:
+Strike Mission is an automated monitor that checks upcoming snowfall at major ski destinations and alerts you when conditions align with affordable, non-stop flights from the NYC area.
+
+The goal: identify high-confidence ski weekends without manual searching.
+
+---
+
+## What it does
+
+A scheduled job runs each Monday evening and:
+
+1. Checks the **7-day snowfall forecast** (starting from that Monday) for:
    - Snowbird
    - Jackson Hole
    - Taos
    - Big Sky (Montana)
    - Steamboat Springs
    - Mammoth Mountain
-2. If any mountain has **>= 24 inches** forecast, it searches for **non‑stop flights** from any NYC airport (JFK/LGA/EWR) or Westchester County (HPN) to the **two closest airports** (by distance) to that mountain.
-3. Searches outbound flights **Thursday 3:00pm–12:00am local time** and return flights **Sunday (configurable)**.
-4. Emails the results Monday night.
+
+2. If any mountain has **≥ 24 inches** of projected snowfall:
+   - Searches for **non-stop outbound flights** from:
+     - JFK, LGA, EWR, or HPN
+   - To the **two closest airports (by distance)** for that mountain
+
+3. Flight search constraints:
+   - **Outbound:** Thursday between **3:00pm–12:00am (local time)**
+   - **Return:** Sunday (configurable via environment variable)
+
+4. Emails a summarized report with:
+   - qualifying mountains
+   - best available fares
+   - outbound + return pricing
+
+---
 
 ## How it runs
 
-GitHub Actions runs the workflow on Mondays during the 5pm ET hour (it checks local time before sending):
+- The workflow is executed via **GitHub Actions**
+- It runs on Mondays during the **5:00pm ET hour**
+- A time check inside the script ensures the email only sends at the correct local time
 
-```
-0 20-23 * * 1
-```
+Cron schedule:
 
-The script verifies that it is **Monday 5pm ET** before sending.
+---
 
 ## Configuration
 
-Create repository secrets in GitHub:
+All configuration is handled via environment variables.
 
-### OpenSnow API
+Use `.env.example` as a reference and create the corresponding repository secrets in GitHub Actions.
+
+### OpenSnow
 - `OPENSNOW_API_KEY`
+- Optional per-mountain station overrides:
+  - `OPENSNOW_STATION_SNOWBIRD`
+  - `OPENSNOW_STATION_JACKSON_HOLE`
+  - `OPENSNOW_STATION_TAOS`
+  - `OPENSNOW_STATION_BIG_SKY_MONTANA`
+  - `OPENSNOW_STATION_STEAMBOAT_SPRINGS`
+  - `OPENSNOW_STATION_MAMMOTH_MOUNTAIN`
 
-### Amadeus API
+### Amadeus (Flights API)
 - `AMADEUS_CLIENT_ID`
 - `AMADEUS_CLIENT_SECRET`
 
 ### Email (SMTP)
-Example for Gmail SMTP (requires an App Password):
-- `SMTP_HOST` (e.g. smtp.gmail.com)
-- `SMTP_PORT` (e.g. 587)
-- `SMTP_USER` (your Gmail address)
-- `SMTP_PASSWORD` (app password)
-- `SMTP_FROM` (same as sender)
-- `SMTP_TO` (recipient email)
+Typical Gmail setup (requires App Password):
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASSWORD`
+- `SMTP_FROM`
+- `SMTP_TO`
 
 ### Optional overrides
 - `SNOWFALL_THRESHOLD_IN` (default: 24)
-- `RETURN_DAY_OFFSET` (default: 3; Thursday + 3 = Sunday)
+- `RETURN_DAY_OFFSET` (default: 3 → Thursday + 3 = Sunday)
 - `NYC_AIRPORTS` (default: JFK,LGA,EWR,HPN)
 
-## Local run
+---
 
-```
+## Local execution
+
+```bash
 pip install -r requirements.txt
 python scripts/snow_flight_report.py
-```
 
-## Notes
-- Google Flights is not easily automated; this uses the Amadeus API for real‑time flight offers.
-- Airport lists and coordinates are in `scripts/snow_flight_report.py`.
-SSH works 🎯
+
+'''bash
