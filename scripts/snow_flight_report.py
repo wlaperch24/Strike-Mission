@@ -331,3 +331,6 @@ def main() -> None:
         send_email(subject, body)
         print("Email sent.")
 
+if __name__ == "__main__":
+    main()
+
