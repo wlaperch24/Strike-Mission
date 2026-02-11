@@ -308,16 +308,16 @@ def main() -> None:
             )
             report_lines.append(f"Return ({return_date}): {format_flight(return_best)}")
             report_lines.append("")
-subject = "Snowfall & Flight Monitor"
+    subject = "Snowfall & Flight Monitor"
 
-body = "\n".join(report_lines)
+    body = "\n".join(report_lines)
 
-dry_run = os.getenv("DRY_RUN", "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    dry_run = os.getenv("DRY_RUN", "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
-if dry_run:
-    print("DRY_RUN is enabled — not sending email. Printing report instead:\n")
-    print(body)
-else:
-    send_email(subject, body)
-    print("Email sent.")
+    if dry_run:
+        print("DRY_RUN is enabled — not sending email. Printing report instead:\n")
+        print(body)
+    else:
+        send_email(subject, body)
+        print("Email sent.")
 
