@@ -94,8 +94,11 @@ def get_open_meteo_snowfall(mountain: Mountain) -> float:
     response.raise_for_status()
     payload = response.json()
     daily = payload.get("daily", {})
-    snowfall_values = daily.get("snowfall_sum", [])
-    return float(sum(snowfall_values[:7]))
+    snowfall_cm = daily.get("snowfall_sum", [])
+    total_cm = float(sum(snowfall_cm[:7]))
+    total_in = total_cm / 2.54
+    return total_in
+
 
 
 OPENSNOW_STATIONS = {
@@ -269,7 +272,9 @@ def main() -> None:
     outbound_date = next_thursday_date(now)
     return_date = outbound_date + dt.timedelta(days=return_offset)
 
-    token = amadeus_token()
+    enable_flights = os.getenv("ENABLE_FLIGHTS", "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    token = None
+
 
     report_lines = [
         f"Snow & Flight Report for {now.strftime('%Y-%m-%d')} (Monday 5pm ET)",
@@ -296,6 +301,8 @@ def main() -> None:
 
     if not qualifying_mountains:
         report_lines.append("No mountains exceeded the snowfall threshold.")
+    elif not token:
+        report_lines.append("Flight search skipped (no Amadeus token / ENABLE_FLIGHTS is off).")
     else:
         for mountain in MOUNTAINS:
             if mountain.name not in qualifying_mountains:
