@@ -331,6 +331,11 @@ def main() -> None:
         send_email(subject, body)
         print("Email sent.")
 
+print("=== MODULE LOADED ===", flush=True)
+
 if __name__ == "__main__":
+    print("=== ENTERING MAIN ===", flush=True)
     main()
+    print("=== MAIN FINISHED ===", flush=True)
+
 
