@@ -36,5 +36,5 @@ jobs:
           RETURN_DAY_OFFSET: ${{ secrets.RETURN_DAY_OFFSET }}
           NYC_AIRPORTS: ${{ secrets.NYC_AIRPORTS }}
           DRY_RUN: "true"
-        run: python scripts/snow_flight_report.py
+        run: python scripts/snow_flight_report.py | tee report.txt
 
