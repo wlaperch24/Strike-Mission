@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+print("=== START snow_flight_report.py ===", flush=True)
 import datetime as dt
 import math
 import os
