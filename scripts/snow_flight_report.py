@@ -255,15 +255,17 @@ def next_thursday_date(start: dt.datetime) -> dt.date:
 
 
 def main() -> None:
-    if not should_run_now() and os.getenv("FORCE_RUN") != "true":
-        print("Not within Monday 5pm ET window. Exiting.")
-        return
+    now = dt.datetime.now(NY_TZ)
+
+    # if now.weekday() != 0 or now.hour != 17:
+    #     print("Not within Monday 5pm ET window. Exiting.")
+    #     return
+
 
     threshold = float(os.getenv("SNOWFALL_THRESHOLD_IN", "24"))
     return_offset = int(os.getenv("RETURN_DAY_OFFSET", "3"))
     origin_airports = os.getenv("NYC_AIRPORTS", "JFK,LGA,EWR,HPN").split(",")
 
-    now = dt.datetime.now(NY_TZ)
     outbound_date = next_thursday_date(now)
     return_date = outbound_date + dt.timedelta(days=return_offset)
 
