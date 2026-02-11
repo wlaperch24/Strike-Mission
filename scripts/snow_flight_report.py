@@ -275,6 +275,7 @@ def main() -> None:
     ]
 
     qualifying_mountains: Dict[str, float] = {}
+    print("=== CHECKPOINT: about to fetch snowfall for mountains ===", flush=True)
     for mountain in MOUNTAINS:
         snowfall = get_snowfall_forecast(mountain)
         
