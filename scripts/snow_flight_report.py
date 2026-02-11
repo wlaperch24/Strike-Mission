@@ -276,9 +276,17 @@ def main() -> None:
     qualifying_mountains: Dict[str, float] = {}
     for mountain in MOUNTAINS:
         snowfall = get_snowfall_forecast(mountain)
-        report_lines.append(f"{mountain.name}: {snowfall:.1f} in (7-day forecast)")
-        if snowfall >= threshold:
+        
+        triggered = snowfall >= threshold
+        status = "✅ TRIGGERED" if triggered else "—"
+
+        report_lines.append(
+            f"{mountain.name}: {snowfall:.1f} in (7-day forecast) {status}"
+        )
+
+        if triggered:
             qualifying_mountains[mountain.name] = snowfall
+
 
     report_lines.append("")
 
