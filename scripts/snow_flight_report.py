@@ -264,7 +264,6 @@ def main() -> None:
     #     print("Not within Monday 5pm ET window. Exiting.")
     #     return
 
-
     threshold = float(os.getenv("SNOWFALL_THRESHOLD_IN", "24"))
     return_offset = int(os.getenv("RETURN_DAY_OFFSET", "3"))
     origin_airports = os.getenv("NYC_AIRPORTS", "JFK,LGA,EWR,HPN").split(",")
@@ -275,6 +274,16 @@ def main() -> None:
     enable_flights = os.getenv("ENABLE_FLIGHTS", "").strip().lower() in {"1", "true", "yes", "y", "on"}
     token = None
 
+    print(f"ENABLE_FLIGHTS={enable_flights}", flush=True)
+
+    if enable_flights:
+        try:
+            print("Attempting to get Amadeus token...", flush=True)
+            token = amadeus_token()
+            print("Amadeus token OK.", flush=True)
+        except Exception as e:
+            print(f"Amadeus token FAILED: {type(e).__name__}: {e}", flush=True)
+            token = None
 
     report_lines = [
         f"Snow & Flight Report for {now.strftime('%Y-%m-%d')} (Monday 5pm ET)",
@@ -302,7 +311,7 @@ def main() -> None:
     if not qualifying_mountains:
         report_lines.append("No mountains exceeded the snowfall threshold.")
     elif not token:
-        report_lines.append("Flight search skipped (no Amadeus token / ENABLE_FLIGHTS is off).")
+        report_lines.append("Flight search skipped (token missing). ENABLE_FLIGHTS={enable_flights}")
     else:
         for mountain in MOUNTAINS:
             if mountain.name not in qualifying_mountains:
