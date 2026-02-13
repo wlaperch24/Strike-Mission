@@ -102,6 +102,24 @@ def get_open_meteo_snowfall(mountain: Mountain) -> float:
     return float(sum(snowfall_values[:7]))
 
 
+def get_open_meteo_recent_snowfall(mountain: Mountain, now: dt.datetime) -> float:
+    end_date = (now.date() - dt.timedelta(days=1)).isoformat()
+    start_date = (now.date() - dt.timedelta(days=7)).isoformat()
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": mountain.latitude,
+        "longitude": mountain.longitude,
+        "start_date": start_date,
+        "end_date": end_date,
+        "daily": "snowfall_sum",
+        "timezone": "America/Denver",
+    }
+    payload = get_json_with_retries(url, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+    daily = payload.get("daily", {})
+    snowfall_values = daily.get("snowfall_sum", [])
+    return float(sum(snowfall_values[:7]))
+
+
 OPENSNOW_STATIONS = {
     "Snowbird": "OPENSNOW_STATION_SNOWBIRD",
     "Jackson Hole": "OPENSNOW_STATION_JACKSON_HOLE",
@@ -361,6 +379,7 @@ def main() -> None:
     html_sections: List[str] = []
 
     qualifying_mountains: Dict[str, float] = {}
+    recent_snowfall_totals: Dict[str, Optional[float]] = {}
     for mountain in MOUNTAINS:
         try:
             snowfall = get_snowfall_forecast(mountain)
@@ -368,7 +387,19 @@ def main() -> None:
             report_lines.append(f"{mountain.name}: forecast unavailable ({exc})")
             snowfall_rows.append((mountain.name, None, str(exc), False))
             continue
-        report_lines.append(f"{mountain.name}: {snowfall:.1f} in (7-day forecast)")
+        recent_total: Optional[float] = None
+        try:
+            recent_total = get_open_meteo_recent_snowfall(mountain, now)
+        except requests.RequestException as exc:
+            print(f"Recent snowfall lookup failed for {mountain.name}: {exc}")
+        recent_snowfall_totals[mountain.name] = recent_total
+
+        if recent_total is None:
+            report_lines.append(f"{mountain.name}: {snowfall:.1f} in (next 7 days)")
+        else:
+            report_lines.append(
+                f"{mountain.name}: {snowfall:.1f} in (next 7 days) | {recent_total:.1f} in (previous 7 days)"
+            )
         qualifies = snowfall >= threshold
         snowfall_rows.append((mountain.name, snowfall, None, qualifies))
         if qualifies:
@@ -421,12 +452,19 @@ def main() -> None:
     for name, snowfall, error_msg, qualifies in snowfall_rows:
         if snowfall is None:
             value_html = f'<span style="color:#b91c1c;">forecast unavailable ({html.escape(error_msg or "unknown error")})</span>'
+            previous_html = '<span style="color:#94a3b8;">n/a</span>'
         else:
             color = "#15803d" if qualifies else "#334155"
             value_html = f'<strong style="color:{color};">{snowfall:.1f} in</strong> <span style="color:#6b7280;">(7-day forecast)</span>'
+            previous_total = recent_snowfall_totals.get(name)
+            if previous_total is None:
+                previous_html = '<span style="color:#94a3b8;">unavailable</span>'
+            else:
+                previous_html = f'<strong style="color:#1d4ed8;">{previous_total:.1f} in</strong> <span style="color:#6b7280;">(previous 7 days)</span>'
         snowfall_rows_html.append(
             f'<tr><td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#111827;">{html.escape(name)}</td>'
-            f'<td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">{value_html}</td></tr>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">{value_html}</td>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">{previous_html}</td></tr>'
         )
 
     html_report = (
@@ -439,6 +477,11 @@ def main() -> None:
         "<div style=\"margin-top:14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;\">"
         "<div style=\"font-size:17px;font-weight:700;color:#0f172a;margin-bottom:8px;\">7-Day Snowfall</div>"
         "<table style=\"width:100%;border-collapse:collapse;\">"
+        "<tr>"
+        "<th style=\"text-align:left;padding:8px 10px;border-bottom:2px solid #e2e8f0;color:#334155;\">Mountain</th>"
+        "<th style=\"text-align:left;padding:8px 10px;border-bottom:2px solid #e2e8f0;color:#334155;\">Next 7 Days</th>"
+        "<th style=\"text-align:left;padding:8px 10px;border-bottom:2px solid #e2e8f0;color:#334155;\">Previous 7 Days</th>"
+        "</tr>"
         + "".join(snowfall_rows_html)
         + "</table></div>"
         + (
