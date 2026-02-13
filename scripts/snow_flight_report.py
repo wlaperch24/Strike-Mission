@@ -277,15 +277,15 @@ def main() -> None:
     print(f"ENABLE_FLIGHTS={enable_flights}", flush=True)
 
     if enable_flights:
-    try:
-        print("Attempting to get Amadeus token...", flush=True)
-        print(f"Has AMADEUS_CLIENT_ID? {bool(os.getenv('AMADEUS_CLIENT_ID'))}", flush=True)
-        print(f"Has AMADEUS_CLIENT_SECRET? {bool(os.getenv('AMADEUS_CLIENT_SECRET'))}", flush=True)
-        token = amadeus_token()
-        print("Amadeus token OK.", flush=True)
-    except Exception as e:
-        print(f"Amadeus token FAILED: {type(e).__name__}: {e}", flush=True)
-        token = None
+        try:
+            print("Attempting to get Amadeus token...", flush=True)
+            print(f"Has AMADEUS_CLIENT_ID? {bool(os.getenv('AMADEUS_CLIENT_ID'))}", flush=True)
+            print(f"Has AMADEUS_CLIENT_SECRET? {bool(os.getenv('AMADEUS_CLIENT_SECRET'))}", flush=True)
+            token = amadeus_token()
+            print("Amadeus token OK.", flush=True)
+        except Exception as e:
+            print(f"Amadeus token FAILED: {type(e).__name__}: {e}", flush=True)
+            token = None
 
     report_lines = [
         f"Snow & Flight Report for {now.strftime('%Y-%m-%d')} (Monday 5pm ET)",
