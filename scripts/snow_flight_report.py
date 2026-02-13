@@ -90,14 +90,24 @@ def get_open_meteo_snowfall(mountain: Mountain) -> float:
         "daily": "snowfall_sum",
         "timezone": "America/Denver",
     }
-    response = requests.get(url, params=params, timeout=30)
-    response.raise_for_status()
-    payload = response.json()
-    daily = payload.get("daily", {})
-    snowfall_cm = daily.get("snowfall_sum", [])
-    total_cm = float(sum(snowfall_cm[:7]))
-    total_in = total_cm / 2.54
-    return total_in
+
+    # Retry a few times because GitHub runners sometimes have random outbound SSL/read hiccups
+    last_err: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            response = requests.get(url, params=params, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+            daily = payload.get("daily", {})
+            snowfall_values = daily.get("snowfall_sum", [])
+            return float(sum(snowfall_values[:7]))
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.SSLError) as e:
+            last_err = e
+            print(f"Open-Meteo attempt {attempt}/3 failed: {type(e).__name__}: {e}", flush=True)
+
+    # If all retries fail, do NOT crash the whole run
+    print(f"Open-Meteo FAILED for {mountain.name}. Using 0.0 fallback. Last error: {last_err}", flush=True)
+    return 0.0
 
 
 
