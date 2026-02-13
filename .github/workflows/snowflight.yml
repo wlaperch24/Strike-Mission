@@ -34,4 +34,14 @@ jobs:
           SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN }}
           RETURN_DAY_OFFSET: ${{ secrets.RETURN_DAY_OFFSET }}
           NYC_AIRPORTS: ${{ secrets.NYC_AIRPORTS }}
-        run: python scripts/snow_flight_report.py
+        run: |
+          set -o pipefail
+          python scripts/snow_flight_report.py 2>&1 | tee report.txt
+
+      - name: Upload report log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snowflight-report-${{ github.run_id }}
+          path: report.txt
+          if-no-files-found: warn
