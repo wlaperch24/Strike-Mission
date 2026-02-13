@@ -34,6 +34,7 @@ jobs:
           SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN }}
           RETURN_DAY_OFFSET: ${{ secrets.RETURN_DAY_OFFSET }}
           NYC_AIRPORTS: ${{ secrets.NYC_AIRPORTS }}
+          FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
         run: |
           set -o pipefail
           python scripts/snow_flight_report.py 2>&1 | tee report.txt
