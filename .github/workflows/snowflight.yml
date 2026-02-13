@@ -31,7 +31,7 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
           SMTP_TO: ${{ secrets.SMTP_TO }}
-          SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN }}
+          SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN || '16' }}
           RETURN_DAY_OFFSET: ${{ secrets.RETURN_DAY_OFFSET }}
           NYC_AIRPORTS: ${{ secrets.NYC_AIRPORTS }}
           FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}

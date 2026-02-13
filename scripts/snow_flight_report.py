@@ -110,6 +110,17 @@ OPENSNOW_STATIONS = {
     "Mammoth Mountain": "OPENSNOW_STATION_MAMMOTH_MOUNTAIN",
 }
 
+AIRLINE_NAMES = {
+    "AA": "American Airlines",
+    "AS": "Alaska Airlines",
+    "B6": "JetBlue",
+    "DL": "Delta Air Lines",
+    "F9": "Frontier Airlines",
+    "NK": "Spirit Airlines",
+    "UA": "United Airlines",
+    "WN": "Southwest Airlines",
+}
+
 
 def get_snowfall_forecast(mountain: Mountain) -> float:
     api_key = os.getenv("OPENSNOW_API_KEY")
@@ -277,9 +288,10 @@ def get_best_fares(
 def format_flight(option: Optional[FlightOption]) -> str:
     if not option:
         return "No non-stop flights found in time window."
+    carrier_name = AIRLINE_NAMES.get(option.carrier, "Unknown Airline")
     return (
         f"{option.origin} → {option.destination} | {option.departure_local} | "
-        f"{option.carrier} | ${option.price}"
+        f"{carrier_name} ({option.carrier}) | ${option.price}"
     )
 
 
@@ -318,7 +330,7 @@ def main() -> None:
         print("Not within Monday 5pm ET window. Exiting.")
         return
 
-    threshold = float(os.getenv("SNOWFALL_THRESHOLD_IN", "24"))
+    threshold = float(os.getenv("SNOWFALL_THRESHOLD_IN", "16"))
     return_offset = int(os.getenv("RETURN_DAY_OFFSET", "3"))
     origin_airports = [code.strip().upper() for code in os.getenv("NYC_AIRPORTS", "JFK,LGA,EWR,HPN").split(",") if code.strip()]
 
