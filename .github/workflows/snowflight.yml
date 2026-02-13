@@ -1,5 +1,4 @@
-
-name: Snow & Flight Monitor
+name: Snowfall and Flight Monitor
 
 on:
   schedule:
@@ -7,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  report:
+  run-report:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,6 +34,4 @@ jobs:
           SNOWFALL_THRESHOLD_IN: ${{ secrets.SNOWFALL_THRESHOLD_IN }}
           RETURN_DAY_OFFSET: ${{ secrets.RETURN_DAY_OFFSET }}
           NYC_AIRPORTS: ${{ secrets.NYC_AIRPORTS }}
-          ENABLE_FLIGHTS: "true"
-        run: python scripts/snow_flight_report.py | tee report.txt
-
+        run: python scripts/snow_flight_report.py

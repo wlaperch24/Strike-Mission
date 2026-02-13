@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-print("=== START snow_flight_report.py ===", flush=True)
 import datetime as dt
 import math
 import os
 import smtplib
 import sys
+import time
 from dataclasses import dataclass
 from email.message import EmailMessage
+from http import HTTPStatus
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import pytz
@@ -14,6 +15,10 @@ import requests
 from dateutil import parser as date_parser
 
 NY_TZ = pytz.timezone("America/New_York")
+REQUEST_TIMEOUT_SECONDS = 45
+AMADEUS_RATE_LIMIT_RETRIES = 4
+AMADEUS_TOKEN_RETRIES = 3
+AMADEUS_BETWEEN_REQUEST_DELAY_SECONDS = 0.25
 
 @dataclass(frozen=True)
 class Airport:
@@ -90,25 +95,10 @@ def get_open_meteo_snowfall(mountain: Mountain) -> float:
         "daily": "snowfall_sum",
         "timezone": "America/Denver",
     }
-
-    # Retry a few times because GitHub runners sometimes have random outbound SSL/read hiccups
-    last_err: Exception | None = None
-    for attempt in range(1, 4):
-        try:
-            response = requests.get(url, params=params, timeout=20)
-            response.raise_for_status()
-            payload = response.json()
-            daily = payload.get("daily", {})
-            snowfall_values = daily.get("snowfall_sum", [])
-            return float(sum(snowfall_values[:7]))
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.SSLError) as e:
-            last_err = e
-            print(f"Open-Meteo attempt {attempt}/3 failed: {type(e).__name__}: {e}", flush=True)
-
-    # If all retries fail, do NOT crash the whole run
-    print(f"Open-Meteo FAILED for {mountain.name}. Using 0.0 fallback. Last error: {last_err}", flush=True)
-    return 0.0
-
+    payload = get_json_with_retries(url, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+    daily = payload.get("daily", {})
+    snowfall_values = daily.get("snowfall_sum", [])
+    return float(sum(snowfall_values[:7]))
 
 
 OPENSNOW_STATIONS = {
@@ -127,34 +117,64 @@ def get_snowfall_forecast(mountain: Mountain) -> float:
     station_id = os.getenv(station_env) if station_env else None
     if api_key and station_id:
         url = "https://api.opensnow.com/forecast"
-        response = requests.get(
-            url,
-            params={"station_id": station_id},
-            headers={"X-Api-Key": api_key},
-            timeout=30,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        daily = payload.get("daily", [])
-        snowfall_values = [day.get("snowfall_inches", 0) for day in daily[:7]]
-        return float(sum(snowfall_values))
+        try:
+            payload = get_json_with_retries(
+                url,
+                params={"station_id": station_id},
+                headers={"X-Api-Key": api_key},
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            daily = payload.get("daily", [])
+            snowfall_values = [day.get("snowfall_inches", 0) for day in daily[:7]]
+            return float(sum(snowfall_values))
+        except requests.RequestException as exc:
+            print(f"OpenSnow lookup failed for {mountain.name}, falling back to Open-Meteo: {exc}")
     return get_open_meteo_snowfall(mountain)
+
+
+def get_json_with_retries(
+    url: str,
+    *,
+    params: Optional[dict] = None,
+    headers: Optional[dict] = None,
+    timeout: int = REQUEST_TIMEOUT_SECONDS,
+    retries: int = 3,
+) -> dict:
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException:
+            if attempt == retries:
+                raise
+            time.sleep(2 ** (attempt - 1))
 
 
 def amadeus_token() -> str:
     client_id = os.environ["AMADEUS_CLIENT_ID"]
     client_secret = os.environ["AMADEUS_CLIENT_SECRET"]
-    response = requests.post(
-        "https://test.api.amadeus.com/v1/security/oauth2/token",
-        data={
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret,
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()["access_token"]
+    url = "https://test.api.amadeus.com/v1/security/oauth2/token"
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+
+    for attempt in range(AMADEUS_TOKEN_RETRIES):
+        response = requests.post(url, data=data, timeout=REQUEST_TIMEOUT_SECONDS)
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < AMADEUS_TOKEN_RETRIES - 1:
+            retry_after = response.headers.get("Retry-After")
+            if retry_after and retry_after.isdigit():
+                delay_seconds = max(1, int(retry_after))
+            else:
+                delay_seconds = min(8, 2 ** attempt)
+            time.sleep(delay_seconds)
+            continue
+        response.raise_for_status()
+        return response.json()["access_token"]
+
+    raise RuntimeError("Unable to retrieve Amadeus token after retries.")
 
 
 def parse_departure_hour(iso_time: str) -> int:
@@ -181,19 +201,9 @@ def find_best_flight(
         "currencyCode": "USD",
         "max": 20,
     }
-
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
-    except requests.HTTPError:
-        # Print the response body so we can see EXACTLY what Amadeus is rejecting
-        print("AMADEUS flight-offers request failed", flush=True)
-        print(f"URL: {response.url}", flush=True)
-        print(f"Status: {response.status_code}", flush=True)
-        print(f"Body: {response.text}", flush=True)
+    response = request_amadeus_flight_offers_with_retries(url, headers=headers, params=params)
+    if response is None:
         return None
-    response = requests.get(url, headers=headers, params=params, timeout=30)
-    response.raise_for_status()
     offers = response.json().get("data", [])
     best: Optional[FlightOption] = None
     for offer in offers:
@@ -218,6 +228,29 @@ def find_best_flight(
     return best
 
 
+def request_amadeus_flight_offers_with_retries(
+    url: str,
+    *,
+    headers: dict,
+    params: dict,
+) -> Optional[requests.Response]:
+    for attempt in range(AMADEUS_RATE_LIMIT_RETRIES + 1):
+        response = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < AMADEUS_RATE_LIMIT_RETRIES:
+            retry_after = response.headers.get("Retry-After")
+            if retry_after and retry_after.isdigit():
+                delay_seconds = max(1, int(retry_after))
+            else:
+                delay_seconds = min(16, 2 ** attempt)
+            time.sleep(delay_seconds)
+            continue
+        if response.ok:
+            return response
+        print(f"AMADEUS flight-offers request failed ({response.status_code}): {response.text}")
+        return None
+    return None
+
+
 def get_best_fares(
     token: str,
     origin_airports: Iterable[str],
@@ -232,10 +265,12 @@ def get_best_fares(
             outbound = find_best_flight(token, origin, destination, outbound_date)
             if outbound and (outbound_best is None or float(outbound.price) < float(outbound_best.price)):
                 outbound_best = outbound
+            time.sleep(AMADEUS_BETWEEN_REQUEST_DELAY_SECONDS)
         for origin in origin_airports:
             inbound = find_best_flight(token, destination, origin, return_date)
             if inbound and (return_best is None or float(inbound.price) < float(return_best.price)):
                 return_best = inbound
+            time.sleep(AMADEUS_BETWEEN_REQUEST_DELAY_SECONDS)
     return outbound_best, return_best
 
 
@@ -279,34 +314,17 @@ def next_thursday_date(start: dt.datetime) -> dt.date:
 
 
 def main() -> None:
-    now = dt.datetime.now(NY_TZ)
-
-    # if now.weekday() != 0 or now.hour != 17:
-    #     print("Not within Monday 5pm ET window. Exiting.")
-    #     return
+    if not should_run_now() and os.getenv("FORCE_RUN") != "true":
+        print("Not within Monday 5pm ET window. Exiting.")
+        return
 
     threshold = float(os.getenv("SNOWFALL_THRESHOLD_IN", "24"))
     return_offset = int(os.getenv("RETURN_DAY_OFFSET", "3"))
-    origin_airports = os.getenv("NYC_AIRPORTS", "JFK,LGA,EWR,HPN").split(",")
+    origin_airports = [code.strip().upper() for code in os.getenv("NYC_AIRPORTS", "JFK,LGA,EWR,HPN").split(",") if code.strip()]
 
+    now = dt.datetime.now(NY_TZ)
     outbound_date = next_thursday_date(now)
     return_date = outbound_date + dt.timedelta(days=return_offset)
-
-    enable_flights = os.getenv("ENABLE_FLIGHTS", "").strip().lower() in {"1", "true", "yes", "y", "on"}
-    token = None
-
-    print(f"ENABLE_FLIGHTS={enable_flights}", flush=True)
-
-    if enable_flights:
-        try:
-            print("Attempting to get Amadeus token...", flush=True)
-            print(f"Has AMADEUS_CLIENT_ID? {bool(os.getenv('AMADEUS_CLIENT_ID'))}", flush=True)
-            print(f"Has AMADEUS_CLIENT_SECRET? {bool(os.getenv('AMADEUS_CLIENT_SECRET'))}", flush=True)
-            token = amadeus_token()
-            print("Amadeus token OK.", flush=True)
-        except Exception as e:
-            print(f"Amadeus token FAILED: {type(e).__name__}: {e}", flush=True)
-            token = None
 
     report_lines = [
         f"Snow & Flight Report for {now.strftime('%Y-%m-%d')} (Monday 5pm ET)",
@@ -314,28 +332,22 @@ def main() -> None:
     ]
 
     qualifying_mountains: Dict[str, float] = {}
-    print("=== CHECKPOINT: about to fetch snowfall for mountains ===", flush=True)
     for mountain in MOUNTAINS:
-        snowfall = get_snowfall_forecast(mountain)
-        
-        triggered = snowfall >= threshold
-        status = "✅ TRIGGERED" if triggered else "—"
-
-        report_lines.append(
-            f"{mountain.name}: {snowfall:.1f} in (7-day forecast) {status}"
-        )
-
-        if triggered:
+        try:
+            snowfall = get_snowfall_forecast(mountain)
+        except requests.RequestException as exc:
+            report_lines.append(f"{mountain.name}: forecast unavailable ({exc})")
+            continue
+        report_lines.append(f"{mountain.name}: {snowfall:.1f} in (7-day forecast)")
+        if snowfall >= threshold:
             qualifying_mountains[mountain.name] = snowfall
-
 
     report_lines.append("")
 
     if not qualifying_mountains:
         report_lines.append("No mountains exceeded the snowfall threshold.")
-    elif not token:
-        report_lines.append("Flight search skipped (token missing). ENABLE_FLIGHTS={enable_flights}")
     else:
+        token = amadeus_token()
         for mountain in MOUNTAINS:
             if mountain.name not in qualifying_mountains:
                 continue
@@ -359,24 +371,14 @@ def main() -> None:
             )
             report_lines.append(f"Return ({return_date}): {format_flight(return_best)}")
             report_lines.append("")
+
     subject = "Snowfall & Flight Monitor"
+    send_email(subject, "\n".join(report_lines))
 
-    body = "\n".join(report_lines)
-
-    dry_run = os.getenv("DRY_RUN", "").strip().lower() in {"1", "true", "yes", "y", "on"}
-
-    if dry_run:
-        print("DRY_RUN is enabled — not sending email. Printing report instead:\n")
-        print(body)
-    else:
-        send_email(subject, body)
-        print("Email sent.")
-
-print("=== MODULE LOADED ===", flush=True)
 
 if __name__ == "__main__":
-    print("=== ENTERING MAIN ===", flush=True)
-    main()
-    print("=== MAIN FINISHED ===", flush=True)
-
-
+    try:
+        main()
+    except Exception as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
