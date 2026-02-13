@@ -177,7 +177,7 @@ def find_best_flight(
         "destinationLocationCode": destination,
         "departureDate": date,
         "adults": 1,
-        "nonStop": true,
+        "nonStop": True,
         "currencyCode": "USD",
         "max": 20,
     }
