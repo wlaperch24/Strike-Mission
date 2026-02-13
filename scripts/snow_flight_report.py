@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime as dt
+import html
 import math
 import os
 import smtplib
@@ -295,12 +296,26 @@ def format_flight(option: Optional[FlightOption]) -> str:
     )
 
 
-def send_email(subject: str, body: str) -> None:
+def format_flight_html(option: Optional[FlightOption]) -> str:
+    if not option:
+        return '<span style="color:#6b7280;">No non-stop flights found in time window.</span>'
+    carrier_name = AIRLINE_NAMES.get(option.carrier, "Unknown Airline")
+    return (
+        f"<strong>{html.escape(option.origin)} &rarr; {html.escape(option.destination)}</strong>"
+        f" <span style=\"color:#6b7280;\">| {html.escape(option.departure_local)}</span><br>"
+        f"<span style=\"color:#111827;\">{html.escape(carrier_name)} ({html.escape(option.carrier)})</span>"
+        f" <strong style=\"color:#0f766e;\">| ${html.escape(option.price)}</strong>"
+    )
+
+
+def send_email(subject: str, body: str, html_body: Optional[str] = None) -> None:
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = os.environ["SMTP_FROM"]
     msg["To"] = os.environ["SMTP_TO"]
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
 
     host = os.environ["SMTP_HOST"]
     port = int(os.environ.get("SMTP_PORT", "587"))
@@ -342,6 +357,8 @@ def main() -> None:
         f"Snow & Flight Report for {now.strftime('%Y-%m-%d')} (Monday 5pm ET)",
         "",
     ]
+    snowfall_rows: List[Tuple[str, Optional[float], Optional[str], bool]] = []
+    html_sections: List[str] = []
 
     qualifying_mountains: Dict[str, float] = {}
     for mountain in MOUNTAINS:
@@ -349,9 +366,12 @@ def main() -> None:
             snowfall = get_snowfall_forecast(mountain)
         except requests.RequestException as exc:
             report_lines.append(f"{mountain.name}: forecast unavailable ({exc})")
+            snowfall_rows.append((mountain.name, None, str(exc), False))
             continue
         report_lines.append(f"{mountain.name}: {snowfall:.1f} in (7-day forecast)")
-        if snowfall >= threshold:
+        qualifies = snowfall >= threshold
+        snowfall_rows.append((mountain.name, snowfall, None, qualifies))
+        if qualifies:
             qualifying_mountains[mountain.name] = snowfall
 
     report_lines.append("")
@@ -383,15 +403,61 @@ def main() -> None:
             )
             report_lines.append(f"Return ({return_date}): {format_flight(return_best)}")
             report_lines.append("")
+            html_sections.append(
+                "".join(
+                    [
+                        '<div style="border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin:12px 0;background:#ffffff;">',
+                        f'<div style="font-size:18px;font-weight:700;color:#111827;">{html.escape(mountain.name)}</div>',
+                        f'<div style="margin-top:6px;color:#374151;"><strong>Closest airports:</strong> {html.escape(", ".join([f"{a.code} ({a.name})" for a in nearby]))}</div>',
+                        f'<div style="margin-top:10px;"><strong>Outbound ({outbound_date} 3pm-12am):</strong><br>{format_flight_html(outbound_best)}</div>',
+                        f'<div style="margin-top:10px;"><strong>Return ({return_date}):</strong><br>{format_flight_html(return_best)}</div>',
+                        "</div>",
+                    ]
+                )
+            )
 
     report_body = "\n".join(report_lines)
+    snowfall_rows_html = []
+    for name, snowfall, error_msg, qualifies in snowfall_rows:
+        if snowfall is None:
+            value_html = f'<span style="color:#b91c1c;">forecast unavailable ({html.escape(error_msg or "unknown error")})</span>'
+        else:
+            color = "#15803d" if qualifies else "#334155"
+            value_html = f'<strong style="color:{color};">{snowfall:.1f} in</strong> <span style="color:#6b7280;">(7-day forecast)</span>'
+        snowfall_rows_html.append(
+            f'<tr><td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#111827;">{html.escape(name)}</td>'
+            f'<td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;">{value_html}</td></tr>'
+        )
+
+    html_report = (
+        "<html><body style=\"margin:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;\">"
+        "<div style=\"max-width:760px;margin:0 auto;padding:22px;\">"
+        "<div style=\"background:linear-gradient(135deg,#0f172a,#1d4ed8);color:#ffffff;border-radius:14px;padding:18px 20px;\">"
+        f"<div style=\"font-size:24px;font-weight:800;\">Snow & Flight Report</div>"
+        f"<div style=\"margin-top:6px;font-size:14px;opacity:.9;\">{html.escape(now.strftime('%Y-%m-%d'))} | Threshold: {threshold:.1f} in</div>"
+        "</div>"
+        "<div style=\"margin-top:14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;\">"
+        "<div style=\"font-size:17px;font-weight:700;color:#0f172a;margin-bottom:8px;\">7-Day Snowfall</div>"
+        "<table style=\"width:100%;border-collapse:collapse;\">"
+        + "".join(snowfall_rows_html)
+        + "</table></div>"
+        + (
+            "<div style=\"margin-top:14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;\">"
+            "<div style=\"font-size:17px;font-weight:700;color:#0f172a;\">Flight Picks</div>"
+            + "".join(html_sections)
+            + "</div>"
+            if html_sections
+            else '<div style="margin-top:14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;color:#475569;">No mountains exceeded the snowfall threshold.</div>'
+        )
+        + "</div></body></html>"
+    )
     subject = "Snowfall & Flight Monitor"
 
     print("=== REPORT START ===")
     print(report_body)
     print("=== REPORT END ===")
 
-    send_email(subject, report_body)
+    send_email(subject, report_body, html_report)
     print(f"Email sent to {os.environ['SMTP_TO']} with subject: {subject}")
 
 
