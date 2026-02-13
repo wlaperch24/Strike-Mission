@@ -372,8 +372,15 @@ def main() -> None:
             report_lines.append(f"Return ({return_date}): {format_flight(return_best)}")
             report_lines.append("")
 
+    report_body = "\n".join(report_lines)
     subject = "Snowfall & Flight Monitor"
-    send_email(subject, "\n".join(report_lines))
+
+    print("=== REPORT START ===")
+    print(report_body)
+    print("=== REPORT END ===")
+
+    send_email(subject, report_body)
+    print(f"Email sent to {os.environ['SMTP_TO']} with subject: {subject}")
 
 
 if __name__ == "__main__":
