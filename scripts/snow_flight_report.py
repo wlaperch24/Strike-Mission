@@ -167,10 +167,21 @@ def find_best_flight(
         "destinationLocationCode": destination,
         "departureDate": date,
         "adults": 1,
-        "nonStop": True,
+        "nonStop": true,
         "currencyCode": "USD",
         "max": 20,
     }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+        response.raise_for_status()
+    except requests.HTTPError:
+        # Print the response body so we can see EXACTLY what Amadeus is rejecting
+        print("AMADEUS flight-offers request failed", flush=True)
+        print(f"URL: {response.url}", flush=True)
+        print(f"Status: {response.status_code}", flush=True)
+        print(f"Body: {response.text}", flush=True)
+        return None
     response = requests.get(url, headers=headers, params=params, timeout=30)
     response.raise_for_status()
     offers = response.json().get("data", [])
