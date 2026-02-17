@@ -348,7 +348,9 @@ def send_email(subject: str, body: str, html_body: Optional[str] = None) -> None
 
 def should_run_now() -> bool:
     now = dt.datetime.now(NY_TZ)
-    return now.weekday() == 0 and now.hour == 17
+    allowed = now.weekday() == 0 and now.hour == 17
+    print(f"Schedule gate check: {now.isoformat()} ET | allow_send={allowed}")
+    return allowed
 
 
 def next_thursday_date(start: dt.datetime) -> dt.date:
