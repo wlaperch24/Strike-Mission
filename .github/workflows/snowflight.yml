@@ -22,7 +22,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Build Monday key (ET)
+        id: monday_key
+        run: echo "value=$(TZ=America/New_York date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Monday send marker
+        if: github.event_name == 'schedule'
+        id: monday_marker
+        uses: actions/cache/restore@v4
+        with:
+          path: .state/sent-marker
+          key: snowflight-sent-${{ steps.monday_key.outputs.value }}
+
       - name: Run report
+        id: run_report
+        if: github.event_name != 'schedule' || steps.monday_marker.outputs.cache-hit != 'true'
         env:
           OPENSNOW_API_KEY: ${{ secrets.OPENSNOW_API_KEY }}
           AMADEUS_CLIENT_ID: ${{ secrets.AMADEUS_CLIENT_ID }}
@@ -40,6 +54,25 @@ jobs:
         run: |
           set -o pipefail
           python scripts/snow_flight_report.py 2>&1 | tee report.txt
+          if grep -q "Email sent to " report.txt; then
+            echo "email_sent=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "email_sent=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mark Monday send complete
+        if: github.event_name == 'schedule' && steps.run_report.outputs.email_sent == 'true'
+        run: |
+          mkdir -p .state/sent-marker
+          echo "email_sent=true" > .state/sent-marker/status.txt
+          echo "sent_at_et=$(TZ=America/New_York date -Iseconds)" >> .state/sent-marker/status.txt
+
+      - name: Save Monday send marker
+        if: github.event_name == 'schedule' && steps.run_report.outputs.email_sent == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .state/sent-marker
+          key: snowflight-sent-${{ steps.monday_key.outputs.value }}
 
       - name: Upload report log
         if: always()
